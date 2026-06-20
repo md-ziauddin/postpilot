@@ -238,6 +238,78 @@ export default function InstagramPage() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Exporting / Local Publishing State
+  const [publishingState, setPublishingState] = useState<{
+    step: number;
+    status: "idle" | "rendering" | "zipping" | "success" | "error";
+    errorMsg?: string;
+  }>({
+    step: 0,
+    status: "idle",
+  });
+
+  const downloadCarouselZIP = async () => {
+    setPublishingState({ step: 1, status: "rendering" });
+    try {
+      const { toPng } = await import("html-to-image");
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+
+      for (let i = 0; i < activeSlides.length; i++) {
+        const el = document.getElementById(`mock-slide-${i}`);
+        if (!el) {
+          throw new Error(
+            `Slide mockup element 'mock-slide-${i}' not found in the DOM.`
+          );
+        }
+
+        const dataUrl = await toPng(el, {
+          pixelRatio: 2,
+          cacheBust: true,
+          style: {
+            transform: "scale(1)",
+          },
+        });
+        const base64Data = dataUrl.split(",")[1];
+        zip.file(`${formatIndex(i + 1)}-slide.png`, base64Data, { base64: true });
+      }
+
+      if (caption) {
+        zip.file("caption.txt", caption);
+      }
+
+      setPublishingState({ step: 2, status: "zipping" });
+
+      const content = await zip.generateAsync({ type: "blob" });
+      
+      const downloadLink = document.createElement("a");
+      downloadLink.href = URL.createObjectURL(content);
+      downloadLink.download = `${instagramHandle.replace("@", "")}-carousel.zip`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+
+      if (caption) {
+        await navigator.clipboard.writeText(caption);
+        triggerToast("ZIP downloaded & caption copied!");
+      } else {
+        triggerToast("ZIP downloaded successfully!");
+      }
+
+      setPublishingState({
+        step: 3,
+        status: "success",
+      });
+    } catch (err: any) {
+      setPublishingState({
+        step: 0,
+        status: "error",
+        errorMsg:
+          err.message || "An unexpected error occurred during zip generation.",
+      });
+    }
+  };
+
   // Swipe & Drag Gestures state
   const [startX, setStartX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -654,10 +726,10 @@ export default function InstagramPage() {
         {/* Left Panel: Slide Editor & Theme Configuration (5 cols) */}
         <section className="lg:col-span-5 bg-white border border-stone-200/60 rounded-3xl flex flex-col shadow-[0_4px_20px_rgb(0,0,0,0.01)] overflow-hidden h-full">
           {/* Tabs header */}
-          <div className="flex-shrink-0 flex border-b border-stone-150 bg-stone-50/50 sticky top-0 z-10">
+          <div className="flex-shrink-0 flex border-b border-stone-150 bg-stone-50/50 sticky top-0 z-10 overflow-x-auto scrollbar-none">
             <button
               onClick={() => setActiveTab("editor")}
-              className={`flex-1 py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 min-w-[85px] py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === "editor"
                   ? "border-b-2 border-brand-gold text-brand-gold-dark bg-white"
                   : "text-stone-500 border-b-2 border-transparent hover:text-stone-850 hover:bg-stone-50"
@@ -667,7 +739,7 @@ export default function InstagramPage() {
             </button>
             <button
               onClick={() => setActiveTab("design")}
-              className={`flex-1 py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 min-w-[75px] py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === "design"
                   ? "border-b-2 border-brand-gold text-brand-gold-dark bg-white"
                   : "text-stone-500 border-b-2 border-transparent hover:text-stone-850 hover:bg-stone-50"
@@ -677,7 +749,7 @@ export default function InstagramPage() {
             </button>
             <button
               onClick={() => setActiveTab("caption")}
-              className={`flex-1 py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 min-w-[85px] py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === "caption"
                   ? "border-b-2 border-brand-gold text-brand-gold-dark bg-white"
                   : "text-stone-500 border-b-2 border-transparent hover:text-stone-850 hover:bg-stone-50"
@@ -687,13 +759,23 @@ export default function InstagramPage() {
             </button>
             <button
               onClick={() => setActiveTab("import")}
-              className={`flex-1 py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 min-w-[100px] py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === "import"
                   ? "border-b-2 border-brand-gold text-brand-gold-dark bg-white"
                   : "text-stone-500 border-b-2 border-transparent hover:text-stone-850 hover:bg-stone-50"
               }`}
             >
               <i className="fa-solid fa-file-import"></i> JSON Import
+            </button>
+            <button
+              onClick={() => setActiveTab("publish")}
+              className={`flex-1 min-w-[85px] py-3 px-2 text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === "publish"
+                  ? "border-b-2 border-brand-gold text-brand-gold-dark bg-white"
+                  : "text-stone-500 border-b-2 border-transparent hover:text-stone-850 hover:bg-stone-50"
+              }`}
+            >
+              <i className="fa-solid fa-paper-plane"></i> Publish
             </button>
           </div>
 
@@ -1280,6 +1362,168 @@ export default function InstagramPage() {
                 </div>
               </div>
             )}
+
+            {/* Tab: PUBLISH */}
+            {activeTab === "publish" && (
+              <div className="space-y-6 animate-fadeIn">
+                {/* Zero-Auth Info Banner */}
+                <div className="p-4.5 bg-white border border-stone-200/70 rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.01)] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                      Publish Mode
+                    </span>
+                    <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/50 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> Zero-Auth Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-600 leading-relaxed font-sans">
+                    PostPilot runs client-side. No Meta developer accounts or login credentials are required. Simply package your slides and upload them directly to your Instagram account via Meta Business Suite.
+                  </p>
+                </div>
+
+                {/* Stepper Steps Card */}
+                <div className="p-4.5 bg-stone-50/50 border border-stone-200/60 rounded-2xl space-y-4">
+                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                    Manual Publishing Steps
+                  </h4>
+                  <div className="space-y-3.5 text-xs text-stone-650 font-sans">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-gold/15 text-brand-gold-dark font-bold text-[10px] flex items-center justify-center border border-brand-gold/25">
+                        1
+                      </div>
+                      <div>
+                        <span className="font-bold text-stone-800 block">Package & Copy</span>
+                        <p className="text-[11px] text-stone-500 mt-0.5">Generate slides as PNGs, download the ZIP, and copy the caption automatically.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-gold/15 text-brand-gold-dark font-bold text-[10px] flex items-center justify-center border border-brand-gold/25">
+                        2
+                      </div>
+                      <div>
+                        <span className="font-bold text-stone-800 block">Unzip Slides</span>
+                        <p className="text-[11px] text-stone-500 mt-0.5">Extract the downloaded ZIP folder on your machine to retrieve slide images.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-gold/15 text-brand-gold-dark font-bold text-[10px] flex items-center justify-center border border-brand-gold/25">
+                        3
+                      </div>
+                      <div>
+                        <span className="font-bold text-stone-800 block">Upload to Meta Composer</span>
+                        <p className="text-[11px] text-stone-500 mt-0.5">Go to your Meta Business Suite / Creator Studio, drag in the slide images, and paste the caption.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Review Checklist Card */}
+                <div className="p-4 bg-stone-50/30 border border-stone-200/50 rounded-2xl space-y-2.5">
+                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                    Package Checklist
+                  </h4>
+                  <ul className="space-y-1.5 text-xs text-stone-600 font-sans">
+                    <li className="flex items-center gap-2">
+                      <i className="fa-solid fa-circle-check text-brand-gold-dark text-[11px]"></i>
+                      <span>Slides Count: <strong>{activeSlides.length} slides</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <i className="fa-solid fa-circle-check text-brand-gold-dark text-[11px]"></i>
+                      <span>Aspect Ratio: <strong>{aspectRatio === "aspect-[4/5]" ? "Portrait (4:5)" : "Square (1:1)"}</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <i className="fa-solid fa-circle-check text-brand-gold-dark text-[11px]"></i>
+                      <span>Caption Status: <strong>{caption ? `${caption.slice(0, 45)}...` : "No caption set"}</strong></span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Export Trigger Button / Progress */}
+                {publishingState.status === "idle" ? (
+                  <button
+                    onClick={downloadCarouselZIP}
+                    disabled={activeSlides.length === 0}
+                    className="w-full bg-brand-obsidian hover:bg-stone-850 text-white font-bold text-xs py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <i className="fa-solid fa-file-zipper text-sm"></i> Package Carousel ZIP
+                  </button>
+                ) : (
+                  <div className="p-5 border border-stone-200/80 bg-white rounded-2xl shadow-sm space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-stone-800">
+                        {publishingState.status === "success" && "🎉 Package Ready & Caption Copied!"}
+                        {publishingState.status === "error" && "❌ Export Failed"}
+                        {publishingState.status === "rendering" && "🎨 Rendering slide PNGs..."}
+                        {publishingState.status === "zipping" && "📦 Packing slides into ZIP..."}
+                      </span>
+                      {publishingState.status !== "success" && publishingState.status !== "error" && (
+                        <i className="fa-solid fa-spinner animate-spin text-brand-gold-dark text-sm"></i>
+                      )}
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          publishingState.status === "success"
+                            ? "bg-green-500 w-full"
+                            : publishingState.status === "error"
+                              ? "bg-red-500 w-full"
+                              : publishingState.status === "rendering"
+                                ? "bg-brand-gold w-1/2"
+                                : "bg-brand-gold w-[90%]"
+                        }`}
+                      ></div>
+                    </div>
+
+                    {publishingState.status === "success" && (
+                      <div className="pt-2 space-y-2.5">
+                        <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-150 p-3 rounded-xl space-y-1">
+                          <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
+                            <i className="fa-solid fa-circle-check"></i> Package Prepared Successfully
+                          </div>
+                          <p className="leading-relaxed font-sans">
+                            1. Extract the downloaded ZIP file.<br />
+                            2. Open Meta Business Suite composer.<br />
+                            3. Paste the caption (already in your clipboard) and upload the slides!
+                          </p>
+                        </div>
+                        <a
+                          href="https://business.facebook.com/latest/composer"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full text-center bg-brand-gold hover:bg-brand-gold-dark text-brand-obsidian font-bold text-xs py-2.5 px-4 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.01]"
+                        >
+                          <i className="fa-solid fa-square-arrow-up-right"></i> Open Meta Business Suite
+                        </a>
+                        <button
+                          onClick={() => setPublishingState({ step: 0, status: "idle" })}
+                          className="w-full text-center text-stone-400 hover:text-stone-650 text-[10px] font-bold mt-2 cursor-pointer block"
+                        >
+                          Package Another Carousel
+                        </button>
+                      </div>
+                    )}
+
+                    {publishingState.status === "error" && (
+                      <div className="space-y-2.5 pt-1">
+                        <p className="text-[10px] text-red-500 leading-normal bg-red-50 border border-red-100 p-2.5 rounded-xl font-mono">
+                          {publishingState.errorMsg}
+                        </p>
+                        <button
+                          onClick={() => setPublishingState({ step: 0, status: "idle" })}
+                          className="w-full text-center bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs py-2 px-4 rounded-xl transition-all cursor-pointer"
+                        >
+                          Try Again
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
@@ -1384,6 +1628,7 @@ export default function InstagramPage() {
                   return (
                     <div
                       key={slide.id}
+                      id={`mock-slide-${idx}`}
                       className={`w-full flex-shrink-0 relative ${aspectRatio} ${colors.bg} ${colors.text} p-8 flex flex-col justify-between select-none border-r border-stone-200/10 transition-all`}
                     >
                       {/* Header Overlays (all slides) */}
